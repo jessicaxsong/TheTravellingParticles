@@ -1,0 +1,162 @@
+## All processing steps performed prior to statistical analyses
+### Performed in Python and QIIME2 (v.2020.8 – 2021.2) 
+
+# check sequence quality
+conda install -c bioconda -c conda-forge multiqc
+
+multiqc /fastqc-files -o /outputdir -n multiqc.html
+
+# import sequences
+qiime tools import \
+--type 'SampleData[PairedEndSequencesWithQuality]' 
+--input-path /PLAWES/manifests/primer-clipped.csv
+--output-path /PLAWES/processed-data/all-samples/1-demux/trimmed-demux.qza  
+--input-format PairedEndFastqManifestPhred33V2
+
+# view demux file
+qiime demux summarize
+--i-data /PLAWES/processed-data/all-samples/1-demux/trimmed-demux.qza 
+--o-visualization /PLAWES/processed-data/all-samples/1-demux/trimmed-demux.qzv 
+
+# trim and filter
+qiime dada2 denoise-paired
+--i-demultiplexed-seqs /PLAWES/processed-data/all-samples/1-demux/trimmed-demux.qza 
+--p-trunc-len-f 205
+--p-trunc-len-r 245
+--p-chimera-method 'consensus' 
+--p-pooling-method 'independent' 
+--p-n-threads 16 
+--o-table /PLAWES/processed-data/all-samples/2-dada2/7-205-245/trimmed-dada-table.qza
+--o-representative-sequences /PLAWES/processed-data/all-samples/2-dada2/7-205-245/trimmed-dada-repseqs.qza 
+--o-denoising-stats /PLAWES/processed-data/all-samples/2-dada2/7-205-245/trimmed-dada-stats.qza 
+--verbose 
+
+# visualize output
+qiime metadata tabulate \
+--m-input-file /PLAWES/processed-data/all-samples/2-dada2/7-205-245/trimmed-dada-stats.qza
+--o-visualization /PLAWES/processed-data/all-samples/2-dada2/7-205-245/trimmed-dada-stats.qzv
+
+qiime feature-table summarize \
+--i-table /PLAWES/processed-data/all-samples/2-dada2/7-205-245/trimmed-dada-table.qza
+--m-sample-metadata-file /PLAWES/ultimate-sample-metadata.txt
+--o-visualization /PLAWES/processed-data/all-samples/2-dada2/7-205-245/trimmed-dada-table.qzv
+
+qiime feature-table tabulate-seqs \
+--i-data /PLAWES/processed-data/all-samples/2-dada2/7-205-245/trimmed-dada-repseqs.qza 
+--o-visualization /PLAWES/processed-data/all-samples/2-dada2/7-205-245/trimmed-dada-repseqs.qzv
+
+# filter out singletons
+(https://forum.qiime2.org/t/singletons-still-present-after-dada2/4308)
+
+qiime feature-table filter-features \
+--i-table '/home/jsong/Song/PLAWES/processed-data/all-samples/2-dada2/7-205-245*/trimmed-dada-table.qza' 
+--p-min-frequency 2 
+--o-filtered-table '/home/jsong/Song/PLAWES/processed-data/all-samples/2-dada2/7-205-245*/dada-table-no-singletons.qza' 
+
+qiime feature-table summarize \
+--i-table '/home/jsong/Song/PLAWES/processed-data/all-samples/2-dada2/7-205-245*/dada-table-no-singletons.qza' 
+--m-sample-metadata-file '/home/jsong/Song/PLAWES/metadata-files/ultimate-sample-metadata.txt' 
+--o-visualization '/home/jsong/Song/PLAWES/processed-data/all-samples/2-dada2/7-205-245*/dada-table-no-singletons.qzv' 
+
+qiime feature-table filter-seqs \
+--i-data '/home/jsong/Song/PLAWES/processed-data/all-samples/2-dada2/7-205-245*/trimmed-dada-repseqs.qza' 
+--i-table '/home/jsong/Song/PLAWES/processed-data/all-samples/3-filter-singletons/dada-table-no-singletons.qza' 
+--o-filtered-data '/home/jsong/Song/PLAWES/processed-data/all-samples/3-filter-singletons/dada-repseqs-no-singletons.qza'
+
+qiime feature-table tabulate-seqs \
+--i-data '/home/jsong/Song/PLAWES/processed-data/all-samples/3-filter-singletons/dada-repseqs-no-singletons.qza' 
+--o-visualization '/home/jsong/Song/PLAWES/processed-data/all-samples/3-filter-singletons/dada-repseqs-no-singletons.qzv' 
+
+# build insertion tree
+wget  "https://data.qiime2.org/2019.10/common/sepp-refs-silva-128.qza"
+
+qiime fragment-insertion sepp \
+--i-representative-sequences '/home/jsong/Song/PLAWES/processed-data/all-samples/3-filter-singletons/dada-repseqs-no-singletons.qza'
+--i-reference-database '/home/jsong/Song/PLAWES/processed-data/all-samples/3-filter-singletons/sepp-refs-silva-128.qza'
+--p-threads 16
+--o-tree '/home/jsong/Song/PLAWES/processed-data/all-samples/7-phylogenetic-tree/insertion-tree.qza'
+--o-placements '/home/jsong/Song/PLAWES/processed-data/all-samples/7-phylogenetic-tree/insertion-placements.qza'
+
+
+
+# import reference sequences
+# get silva references
+wget https://www.arb-silva.de/fileadmin/silva_databases/qiime/Silva_132_release.zip
+unzip Silva_132_release.zip
+rm Silva_132_release.zip
+
+# import reference sequences (SILVA 132 NR99 SSU)
+
+qiime tools import \
+--type 'FeatureData[Sequence]'
+--input-path '/home/jsong/Song/PLAWES/Processed/TaxonomyClassifier/SILVA 132/Silva_132_release/SILVA_132_QIIME_release/rep_set/rep_set_16S_only/99/silva_132_99_16S.fna'
+--output-path '/home/jsong/Song/PLAWES/Processed/TaxonomyClassifier/SILVA 132/99-otus-16S-seqs.qza'
+
+# import taxonomy strings
+--type 'FeatureData[Taxonomy]'
+--input-format HeaderlessTSVTaxonomyFormat
+--input-path '/home/jsong/Song/PLAWES/Processed/TaxonomyClassifier/SILVA 132/Silva_132_release/SILVA_132_QIIME_release/taxonomy/16S_only/99/majority_taxonomy_7_levels.txt'
+--output-path '/home/jsong/Song/PLAWES/Processed/TaxonomyClassifier/SILVA 132/99-otus-16S-taxonomy.qza'
+
+# extract V3-V4 region from reference
+qiime feature-classifier extract-reads
+--i-sequences '/home/jsong/Song/PLAWES/Processed/TaxonomyClassifier/SILVA 132/99-otus-16S-seqs.qza' 
+--p-f-primer CCTACGGGNGGCWGCAG 
+--p-r-primer GACTACHVGGGTATCTAAKCC 
+--p-min-length 200 
+--p-max-length 600 
+--o-reads '/home/jsong/Song/PLAWES/Processed/TaxonomyClassifier/SILVA 132/16S_refseqs_V3-V4.qza' 
+--verbose 
+&>'/home/jsong/Song/PLAWES/Processed/TaxonomyClassifier/SILVA 132/16S_refseqs_V3-V4_training.log'
+
+# train classifier
+qiime feature-classifier fit-classifier-naive-bayes \
+--i-reference-reads '/home/jsong/Song/PLAWES/processed-data/taxonomy-classifier/SILVA 132/16S_refseqs_V3-V4.qza' 
+--i-reference-taxonomy '/home/jsong/Song/PLAWES/processed-data/taxonomy-classifier/SILVA 132/99-otus-16S-taxonomy.qza' 
+--p-feat-ext--ngram-range [7,7] 
+--o-classifier '/home/jsong/Song/PLAWES/processed-data/taxonomy-classifier/SILVA 132/p-feat-ext--ngram-range/7,7/classifier_V3-V4_7,7.qza'
+
+# classify taxonomies
+qiime feature-classifier classify-sklearn \
+--i-classifier '/home/jsong/Song/PLAWES/processed-data/taxonomy-classifier/SILVA 132/p-feat-ext--ngram-range/7,7/classifier_V3-V4_7,7.qza' 
+--i-reads '/home/jsong/Song/PLAWES/processed-data/all-samples/3-filter-singletons/dada-repseqs-no-singletons.qza' 
+--p-confidence 0.7 
+--o-classification '/home/jsong/Song/PLAWES/processed-data/all-samples/4-classify-sklearn/classified-repseqs.qza'
+
+qiime metadata tabulate \
+--m-input-file '/home/jsong/Song/PLAWES/processed-data/all-samples/4-classify-sklearn/classified-repseqs.qza' 
+--o-visualization '/home/jsong/Song/PLAWES/processed-data/all-samples/4-classify-sklearn/classified-repseqs.qzv' 
+
+# check taxonomies
+qiime taxa barplot 
+--i-table '/home/jsong/Song/PLAWES/processed-data/all-samples/2-dada2/7-205-245*/dada-table-no-singletons.qza' 
+--i-taxonomy '/home/jsong/Song/PLAWES/processed-data/all-samples/4-classify-sklearn/classified-repseqs.qza' 
+--m-metadata-file '/home/jsong/Song/PLAWES/metadata-files/ultimate-sample-metadata.txt' 
+--o-visualization '/home/jsong/Song/PLAWES/processed-data/all-samples/5-taxa-barplot/taxa-barplot.qzv'
+
+# filter out 'noise'
+qiime taxa filter-table \
+--i-table '/home/jsong/Song/PLAWES/processed-data/all-samples/2-dada2/7-205-245*/dada-table-no-singletons.qza' 
+--i-taxonomy '/home/jsong/Song/PLAWES/processed-data/all-samples/4-classify-sklearn/classified-repseqs.qza' 
+--p-exclude Unassigned,mitochondria,chloroplast,D_0__Archaea 
+--o-filtered-table '/home/jsong/Song/PLAWES/processed-data/all-samples/4-classify-sklearn/filtered-feature-table.qza' 
+
+# export feature table
+qiime tools export \
+--input-path '/home/jsong/Song/PLAWES/processed-data/all-samples/4-classify-sklearn/filtered-feature-table.qza' 
+--output-path '/home/jsong/Song/PLAWES/processed-data/all-samples/6-SRS' 
+
+qiime tools export \
+--input-path '/home/jsong/Song/PLAWES/processed-data/all-sample/4-classify-sklearn/classified-repseqs.qza'
+--output-path '/home/jsong/Song/PLAWES/processed-data/all-samples/6-SRS' 
+
+cp '/home/jsong/Song/PLAWES/processed-data/all-samples/6-SRS/taxonomy.tsv' biom-taxonomy.tsv
+
+# change the first line of biom-taxonomy.tsv (i.e. the header) to this: #OTU_ID	taxonomy	confidence
+
+# add metadata to .biom file
+biom add-metadata -i exported/feature-table.biom -o table-with-taxonomy.biom --observation-metadata-fp biom-taxonomy.tsv --sc-separated taxonomy
+
+# convert .biom to .tsv
+biom convert -i '/home/jsong/Song/PLAWES/processed-data/all-samples/6-SRS/table-with-taxonomy.biom' -o '/home/jsong/Song/PLAWES/processed-data/all-samples/6-SRS/feature-table.tsv' --to-tsv --header-key taxonomy
+
