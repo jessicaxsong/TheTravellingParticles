@@ -1,4 +1,5 @@
 ## All processing steps performed prior to statistical analyses
+### Find data files at: https://github.com/jessicaxsong/TheTravellingParticles.git
 ### Performed in Python and QIIME2 (v.2020.8 – 2021.2) 
 
 # check sequence quality
